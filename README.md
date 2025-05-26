@@ -16,5 +16,5 @@
 sudo dnf install -y git
 cd
 git clone https://github.com/Finfra/awsPipe
-cd awsPipe/part1
+cd awsPipe/part1*
 ```
