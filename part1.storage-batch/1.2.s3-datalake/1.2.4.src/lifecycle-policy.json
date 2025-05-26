@@ -1,0 +1,25 @@
+{
+    "Rules": [
+        {
+            "ID": "DataLakeLifecycle",
+            "Status": "Enabled",
+            "Filter": {
+                "Prefix": "raw-data/"
+            },
+            "Transitions": [
+                {
+                    "Days": 30,
+                    "StorageClass": "STANDARD_IA"
+                },
+                {
+                    "Days": 90,
+                    "StorageClass": "GLACIER"
+                },
+                {
+                    "Days": 365,
+                    "StorageClass": "DEEP_ARCHIVE"
+                }
+            ]
+        }
+    ]
+}
