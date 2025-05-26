@@ -1,0 +1,8 @@
+project_name = "bigdata-pipeline"
+s3_bucket_name = "my-emr-studio-bucket-unique-123"
+
+tags = {
+  Environment = "Development"
+  Project     = "BigDataPipeline"
+  Owner       = "DataTeam"
+}

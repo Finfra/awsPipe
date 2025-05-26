@@ -17,8 +17,6 @@
 - 1.3.2.jupyter-integration.md        # 1.3.2. Jupyter Notebook 연동
 - 1.3.3.spark-dataframe-api.md        # 1.3.3. Spark DataFrame API 활용
 - 1.3.4.batch-processing.md           # 1.3.4. 대용량 데이터 배치 처리
-- 1.3.5.lab-emr-spark-job.md          # 1.3.5. 실습: EMR 클러스터 생성 및 Spark Job 실행
-- 1.3.6.lab-s3-optimization.md        # 1.3.6. 실습: S3 데이터 읽기/쓰기 최적화
 
 ## 파일명 체계
 * **이론/가이드**: `{섹션번호}.{내용}.md`

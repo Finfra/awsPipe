@@ -1,0 +1,44 @@
+[
+  {
+    "Classification": "spark-defaults",
+    "Properties": {
+      "spark.sql.adaptive.enabled": "true",
+      "spark.sql.adaptive.coalescePartitions.enabled": "true",
+      "spark.sql.adaptive.skewJoin.enabled": "true",
+      "spark.serializer": "org.apache.spark.serializer.KryoSerializer",
+      "spark.sql.execution.arrow.pyspark.enabled": "true",
+      "spark.dynamicAllocation.enabled": "true",
+      "spark.dynamicAllocation.minExecutors": "1",
+      "spark.dynamicAllocation.maxExecutors": "10"
+    }
+  },
+  {
+    "Classification": "spark-env",
+    "Configurations": [
+      {
+        "Classification": "export",
+        "Properties": {
+          "PYSPARK_PYTHON": "/usr/bin/python3"
+        }
+      }
+    ]
+  },
+  {
+    "Classification": "yarn-site",
+    "Properties": {
+      "yarn.nodemanager.vmem-check-enabled": "false",
+      "yarn.nodemanager.pmem-check-enabled": "false"
+    }
+  },
+  {
+    "Classification": "hadoop-env",
+    "Configurations": [
+      {
+        "Classification": "export",
+        "Properties": {
+          "JAVA_HOME": "/usr/lib/jvm/java-1.8.0"
+        }
+      }
+    ]
+  }
+]

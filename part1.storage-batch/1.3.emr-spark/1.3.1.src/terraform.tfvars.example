@@ -1,0 +1,5 @@
+key_name = "my-emr-key"
+subnet_id = "subnet-12345678"  
+log_bucket = "my-emr-logs-bucket-unique-123"
+aws_region = "us-west-2"
+cluster_name = "spark-data-pipeline"

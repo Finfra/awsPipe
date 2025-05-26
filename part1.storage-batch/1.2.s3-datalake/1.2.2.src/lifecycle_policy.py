@@ -1,4 +1,5 @@
 import boto3
+import sys
 
 def setup_intelligent_tiering(bucket_name):
     s3 = boto3.client('s3')
@@ -45,5 +46,8 @@ def setup_intelligent_tiering(bucket_name):
     )
 
 if __name__ == "__main__":
-    # 사용 예시
-    setup_intelligent_tiering('your-bucket-name')
+    if len(sys.argv) < 2:
+        print("Usage: python3 lifecycle_policy.py <bucket-name>")
+        sys.exit(1)
+    bucket_name = sys.argv[1]
+    setup_intelligent_tiering(bucket_name)
