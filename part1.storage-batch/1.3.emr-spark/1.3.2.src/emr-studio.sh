@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # EMR Studio 생성 오류 해결 스크립트
-# 사용법: ./fix-emr-studio.sh
+# 사용법: ./emr-studio.sh
 
 set -e
 
@@ -45,12 +45,6 @@ else
 fi
 echo
 
-# 3. 포괄적 해결 버전 적용
-echo "🔧 3단계: 포괄적 해결 버전 적용"
-# 기존 파일들 제거 (중복 방지)
-rm -f emr-studio.tf emr-studio-fixed.tf
-# 포괄적 해결 버전만 사용
-cp emr-studio-comprehensive.tf emr-studio.tf
 echo "✅ 새로운 설정 파일 적용 완료"
 echo
 
