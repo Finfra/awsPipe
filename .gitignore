@@ -1,3 +1,54 @@
+# for macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# for VsCode
+.history
+
+# Terraform state
+*.tfstate
+*.tfstate.backup
+*.tfstate.*
+
+# Crash log
+crash.log
+
+# Plan file
+*.tfplan
+
+# Terraform variables file (민감 정보 가능)
+*.tfvars
+*.tfvars.json
+
+# Terraform working directory
+.terraform/
+.terraform.lock.hcl
+
+# Module/package 관련 (로컬 경로로 모듈 가져오는 경우)
+**/.terraform/*
+
+# IDE/OS별 무시 파일 (선택사항)
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
