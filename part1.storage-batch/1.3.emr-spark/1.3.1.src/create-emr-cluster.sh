@@ -55,6 +55,6 @@ aws emr create-cluster \
   --configurations file://configurations.json \
   --bootstrap-actions Path=s3://$LOG_BUCKET/bootstrap/bootstrap.sh,Name="Custom Bootstrap" \
   --tags Name=Environment,Value=Development Name=Project,Value=BigDataPipeline \
-  --region us-west-2
+  --region ap-northeast-2
 
 echo "EMR cluster creation initiated. Check AWS console for status."

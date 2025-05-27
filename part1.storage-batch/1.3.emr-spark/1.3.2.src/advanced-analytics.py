@@ -1,279 +1,290 @@
-# Spark DataFrame 고급 연산 함수들
+# 현재 JSONL 데이터에 맞는 고급 분석 함수들
 from pyspark.sql.functions import *
 from pyspark.sql.window import Window
 from pyspark.sql.types import *
 
-def complex_business_analysis(events_df, users_df, products_df):
-    """복합 비즈니스 분석"""
+def business_summary_analysis(events_df):
+    """비즈니스 요약 분석 - 현재 데이터 구조용"""
     
-    # 1. 브로드캐스트 조인으로 성능 최적화
-    enriched_events = events_df \
-        .join(broadcast(users_df), "user_id") \
-        .join(broadcast(products_df), "product_id")
-    
-    # 2. 복잡한 집계 쿼리
-    regional_analysis = enriched_events \
-        .groupBy("region", "product_category", "user_segment") \
+    # 1. 기본 집계
+    summary = events_df \
+        .groupBy("category", "event_type") \
         .agg(
             count("*").alias("total_events"),
             countDistinct("user_id").alias("unique_users"),
-            sum("value").alias("total_revenue"),
-            avg("value").alias("avg_order_value"),
-            # 중앙값 계산
-            expr("percentile_approx(value, 0.5)").alias("median_order_value"),
-            # 분위수 계산
-            expr("percentile_approx(value, array(0.25, 0.75))").alias("quartiles")
-        )
+            sum("amount").alias("total_amount"),
+            avg("amount").alias("avg_amount"),
+            expr("percentile_approx(amount, 0.5)").alias("median_amount")
+        ) \
+        .orderBy(desc("total_amount"))
     
-    # 3. 피벗 테이블
-    pivot_analysis = enriched_events \
-        .groupBy("region") \
-        .pivot("product_category") \
-        .agg(sum("value").alias("revenue"))
-    
-    # 4. 윈도우 함수로 랭킹
-    window_spec = Window.partitionBy("region").orderBy(desc("total_revenue"))
-    
-    ranked_analysis = regional_analysis \
-        .withColumn("revenue_rank", 
-                   row_number().over(window_spec)) \
-        .withColumn("revenue_percentile", 
-                   percent_rank().over(window_spec))
+    # 2. 시간대별 분석
+    hourly_analysis = events_df \
+        .groupBy("hour", "category") \
+        .agg(
+            count("*").alias("events_count"),
+            sum("amount").alias("hourly_revenue")
+        ) \
+        .orderBy("hour")
     
     return {
-        'enriched_events': enriched_events,
-        'regional_analysis': regional_analysis,
-        'pivot_analysis': pivot_analysis,
-        'ranked_analysis': ranked_analysis
+        'summary': summary,
+        'hourly_analysis': hourly_analysis
     }
 
-def create_cohort_analysis(spark, events_df):
-    """코호트 분석 (SQL 사용)"""
+def user_behavior_analysis(events_df):
+    """사용자 행동 분석"""
     
-    events_df.createOrReplaceTempView("events")
+    # 사용자별 윈도우
+    user_window = Window.partitionBy("user_id").orderBy("timestamp")
     
-    cohort_analysis = spark.sql("""
-        WITH user_first_purchase AS (
-            SELECT 
-                user_id,
-                MIN(DATE(timestamp)) as first_purchase_date,
-                DATE_FORMAT(MIN(timestamp), 'yyyy-MM') as cohort_month
-            FROM events 
-            WHERE event_type = 'purchase'
-            GROUP BY user_id
-        ),
-        user_purchases AS (
-            SELECT 
-                e.user_id,
-                DATE_FORMAT(e.timestamp, 'yyyy-MM') as purchase_month,
-                f.cohort_month,
-                MONTHS_BETWEEN(e.timestamp, f.first_purchase_date) as month_diff
-            FROM events e
-            JOIN user_first_purchase f ON e.user_id = f.user_id
-            WHERE e.event_type = 'purchase'
-        )
-        SELECT 
-            cohort_month,
-            month_diff,
-            COUNT(DISTINCT user_id) as users,
-            COUNT(*) as purchases,
-            SUM(value) as revenue
-        FROM user_purchases
-        GROUP BY cohort_month, month_diff
-        ORDER BY cohort_month, month_diff
-    """)
+    # 사용자 행동 패턴
+    user_behavior = events_df \
+        .withColumn("event_sequence", row_number().over(user_window)) \
+        .withColumn("prev_event", lag("event_type", 1).over(user_window)) \
+        .withColumn("prev_amount", lag("amount", 1).over(user_window)) \
+        .withColumn("time_diff_minutes", 
+                   (unix_timestamp("timestamp") - 
+                    unix_timestamp(lag("timestamp", 1).over(user_window))) / 60)
     
-    return cohort_analysis
-
-def calculate_moving_averages(df, value_col, date_col, windows=[7, 30, 90]):
-    """이동평균 계산"""
-    
-    # 날짜 기준 윈도우
-    window_specs = {}
-    for window_size in windows:
-        window_specs[f"ma_{window_size}"] = Window \
-            .orderBy(date_col) \
-            .rowsBetween(-window_size + 1, 0)
-    
-    # 이동평균 계산
-    result_df = df
-    for ma_name, window_spec in window_specs.items():
-        result_df = result_df.withColumn(
-            ma_name,
-            avg(value_col).over(window_spec)
+    # 사용자별 집계
+    user_summary = events_df \
+        .groupBy("user_id") \
+        .agg(
+            count("*").alias("total_events"),
+            sum("amount").alias("total_spent"),
+            avg("amount").alias("avg_transaction"),
+            countDistinct("category").alias("categories_used"),
+            countDistinct("event_type").alias("event_types"),
+            collect_set("event_type").alias("event_pattern")
         )
     
-    return result_df
+    return {
+        'user_behavior': user_behavior,
+        'user_summary': user_summary
+    }
 
-def detect_anomalies(df, value_col, threshold_std=2.5):
-    """이상치 탐지 (Z-score 기반)"""
+def time_series_analysis(events_df):
+    """시계열 분석"""
+    
+    # 시간별 트렌드
+    hourly_trend = events_df \
+        .groupBy("year", "month", "day", "hour") \
+        .agg(
+            count("*").alias("events"),
+            sum("amount").alias("revenue"),
+            countDistinct("user_id").alias("active_users")
+        ) \
+        .orderBy("year", "month", "day", "hour")
+    
+    # 이동평균 (3시간 윈도우)
+    time_window = Window.orderBy("year", "month", "day", "hour").rowsBetween(-2, 0)
+    
+    trend_with_ma = hourly_trend \
+        .withColumn("events_ma3", avg("events").over(time_window)) \
+        .withColumn("revenue_ma3", avg("revenue").over(time_window))
+    
+    return trend_with_ma
+
+def event_sequence_analysis(events_df):
+    """이벤트 시퀀스 분석"""
+    
+    # 사용자별 이벤트 시퀀스
+    user_window = Window.partitionBy("user_id").orderBy("timestamp")
+    
+    sequence_df = events_df \
+        .withColumn("next_event", lead("event_type", 1).over(user_window)) \
+        .withColumn("event_pair", 
+                   concat(col("event_type"), lit("->"), col("next_event"))) \
+        .filter(col("next_event").isNotNull())
+    
+    # 이벤트 전환 패턴
+    transition_patterns = sequence_df \
+        .groupBy("event_pair") \
+        .count() \
+        .orderBy(desc("count"))
+    
+    return transition_patterns
+
+def category_performance_analysis(events_df):
+    """카테고리 성과 분석"""
+    
+    # 카테고리별 성과 메트릭
+    category_performance = events_df \
+        .groupBy("category") \
+        .agg(
+            count("*").alias("total_transactions"),
+            sum("amount").alias("total_revenue"),
+            avg("amount").alias("avg_transaction_value"),
+            countDistinct("user_id").alias("unique_customers"),
+            # 구매 전환율 (purchase 이벤트 비율)
+            (sum(when(col("event_type") == "purchase", 1).otherwise(0)) / count("*") * 100)
+            .alias("purchase_conversion_rate")
+        ) \
+        .withColumn("revenue_per_customer", 
+                   col("total_revenue") / col("unique_customers"))
+    
+    # 카테고리별 랭킹
+    category_window = Window.orderBy(desc("total_revenue"))
+    
+    ranked_categories = category_performance \
+        .withColumn("revenue_rank", row_number().over(category_window)) \
+        .withColumn("revenue_percentile", percent_rank().over(category_window))
+    
+    return ranked_categories
+
+def anomaly_detection(events_df):
+    """이상치 탐지 - 금액 기준"""
     
     # 통계값 계산
-    stats = df.agg(
-        avg(value_col).alias("mean_val"),
-        stddev(value_col).alias("std_val")
+    stats = events_df.agg(
+        avg("amount").alias("mean_amount"),
+        stddev("amount").alias("std_amount")
     ).collect()[0]
     
-    mean_val = stats["mean_val"]
-    std_val = stats["std_val"]
+    mean_val = stats["mean_amount"]
+    std_val = stats["std_amount"]
     
-    # Z-score 계산 및 이상치 플래그
-    anomaly_df = df \
+    # Z-score 기반 이상치 탐지
+    anomaly_df = events_df \
         .withColumn("z_score", 
-                   abs((col(value_col) - lit(mean_val)) / lit(std_val))) \
-        .withColumn("is_anomaly", 
-                   col("z_score") > threshold_std)
+                   abs((col("amount") - lit(mean_val)) / lit(std_val))) \
+        .withColumn("is_anomaly", col("z_score") > 2.5) \
+        .withColumn("anomaly_type",
+                   when(col("amount") > (lit(mean_val) + lit(std_val) * 2.5), "high")
+                   .when(col("amount") < (lit(mean_val) - lit(std_val) * 2.5), "low")
+                   .otherwise("normal"))
     
     return anomaly_df
 
-def create_feature_engineering(df):
-    """피처 엔지니어링"""
+def create_pivot_analysis(events_df):
+    """피벗 분석"""
     
-    # 시간 기반 피처
-    time_features = df \
-        .withColumn("hour", hour("timestamp")) \
-        .withColumn("day_of_week", dayofweek("timestamp")) \
-        .withColumn("month", month("timestamp")) \
-        .withColumn("quarter", quarter("timestamp")) \
-        .withColumn("is_weekend", 
-                   when(dayofweek("timestamp").isin([1, 7]), 1).otherwise(0))
+    # 카테고리별 x 이벤트타입별 피벗
+    pivot_df = events_df \
+        .groupBy("category") \
+        .pivot("event_type") \
+        .agg(
+            count("*").alias("count"),
+            sum("amount").alias("total_amount")
+        )
     
-    # 사용자 행동 피처
-    user_window = Window.partitionBy("user_id").orderBy("timestamp")
-    
-    behavior_features = time_features \
-        .withColumn("prev_event_time", 
-                   lag("timestamp", 1).over(user_window)) \
-        .withColumn("time_since_last_event", 
-                   (col("timestamp").cast("long") - col("prev_event_time").cast("long")) / 60) \
-        .withColumn("cumulative_events", 
-                   row_number().over(user_window)) \
-        .withColumn("cumulative_value", 
-                   sum("value").over(user_window))
-    
-    # 집계 피처 (지난 N일간)
-    date_window_7d = Window \
-        .partitionBy("user_id") \
-        .orderBy("timestamp") \
-        .rangeBetween(-7 * 24 * 3600, 0)  # 7일간
-    
-    aggregated_features = behavior_features \
-        .withColumn("events_last_7d", 
-                   count("*").over(date_window_7d)) \
-        .withColumn("value_last_7d", 
-                   sum("value").over(date_window_7d)) \
-        .withColumn("avg_value_last_7d", 
-                   avg("value").over(date_window_7d))
-    
-    return aggregated_features
+    return pivot_df
 
-def optimize_dataframe_operations(df):
-    """DataFrame 연산 최적화"""
+def calculate_conversion_funnel(events_df):
+    """전환 퍼널 분석"""
     
-    # 1. 캐싱 전략
-    if df.rdd.getNumPartitions() > 1:
-        df_cached = df.cache()
-        df_cached.count()  # 캐시 워밍업
-        print(f"캐시된 파티션 수: {df_cached.rdd.getNumPartitions()}")
-        return df_cached
+    # 이벤트 타입별 사용자 수
+    funnel_data = events_df \
+        .groupBy("event_type") \
+        .agg(countDistinct("user_id").alias("unique_users")) \
+        .orderBy(desc("unique_users"))
     
-    return df
+    # 전환율 계산 (가정: login -> view -> purchase 순서)
+    event_counts = {row["event_type"]: row["unique_users"] for row in funnel_data.collect()}
+    
+    print("🔄 전환 퍼널 분석:")
+    for event_type, count in event_counts.items():
+        if "login" in event_counts:
+            conversion_rate = (count / event_counts["login"] * 100) if event_counts["login"] > 0 else 0
+            print(f"   {event_type}: {count:,} 명 ({conversion_rate:.1f}%)")
+    
+    return funnel_data
 
-def create_summary_statistics(df, group_cols, value_cols):
-    """요약 통계 생성"""
+def daily_cohort_simple(events_df):
+    """간단한 일별 코호트 분석"""
     
-    # 기본 집계
-    basic_agg = df.groupBy(*group_cols).agg(
-        *[count(col).alias(f"{col}_count") for col in value_cols],
-        *[sum(col).alias(f"{col}_sum") for col in value_cols],
-        *[avg(col).alias(f"{col}_avg") for col in value_cols],
-        *[min(col).alias(f"{col}_min") for col in value_cols],
-        *[max(col).alias(f"{col}_max") for col in value_cols]
-    )
+    # 사용자별 첫 구매일
+    first_purchase = events_df \
+        .filter(col("event_type") == "purchase") \
+        .groupBy("user_id") \
+        .agg(min("timestamp").alias("first_purchase_date"))
     
-    # 고급 통계
-    advanced_agg = df.groupBy(*group_cols).agg(
-        *[expr(f"percentile_approx({col}, 0.5)").alias(f"{col}_median") for col in value_cols],
-        *[expr(f"percentile_approx({col}, array(0.25, 0.75))").alias(f"{col}_quartiles") for col in value_cols],
-        *[stddev(col).alias(f"{col}_stddev") for col in value_cols],
-        *[variance(col).alias(f"{col}_variance") for col in value_cols]
-    )
+    # 코호트 조인
+    cohort_df = events_df \
+        .join(first_purchase, "user_id") \
+        .withColumn("days_since_first", 
+                   datediff(to_date(col("timestamp")), to_date(col("first_purchase_date"))))
     
-    # 조인하여 결합
-    summary_stats = basic_agg.join(advanced_agg, group_cols)
+    # 코호트 집계
+    cohort_analysis = cohort_df \
+        .groupBy("first_purchase_date", "days_since_first") \
+        .agg(
+            countDistinct("user_id").alias("active_users"),
+            sum("amount").alias("cohort_revenue")
+        ) \
+        .orderBy("first_purchase_date", "days_since_first")
     
-    return summary_stats
+    return cohort_analysis
 
-def memory_efficient_processing(spark, input_path, output_path, processing_func):
-    """메모리 효율적 대용량 데이터 처리"""
+def quick_insights(events_df):
+    """빠른 인사이트 추출"""
     
-    # 스트리밍 처리 설정
-    spark.conf.set("spark.sql.streaming.maxBatchDuration", "30s")
-    spark.conf.set("spark.sql.adaptive.enabled", "true")
-    spark.conf.set("spark.sql.adaptive.coalescePartitions.enabled", "true")
+    print("🔍 빠른 데이터 인사이트")
+    print("="*40)
     
-    streaming_df = spark \
-        .readStream \
-        .option("maxFilesPerTrigger", 1) \
-        .parquet(input_path)
+    # 1. 기본 통계
+    total_records = events_df.count()
+    total_users = events_df.select("user_id").distinct().count()
+    total_revenue = events_df.agg(sum("amount")).collect()[0][0]
     
-    # 사용자 정의 처리 함수 적용
-    processed_df = processing_func(streaming_df)
+    print(f"📊 총 레코드: {total_records:,}")
+    print(f"👥 총 사용자: {total_users:,}")
+    print(f"💰 총 거래액: ${total_revenue:,.2f}")
+    print(f"📈 사용자당 평균 거래액: ${total_revenue/total_users:.2f}")
     
-    # 출력
-    query = processed_df \
-        .writeStream \
-        .outputMode("append") \
-        .format("parquet") \
-        .option("path", output_path) \
-        .option("checkpointLocation", f"{output_path}/_checkpoint") \
-        .trigger(processingTime='60 seconds') \
-        .start()
+    # 2. 상위 카테고리
+    print(f"\n🏆 상위 카테고리 (거래액 기준):")
+    events_df.groupBy("category") \
+        .agg(sum("amount").alias("revenue")) \
+        .orderBy(desc("revenue")) \
+        .show(5, truncate=False)
     
-    return query
+    # 3. 피크 시간대
+    print(f"\n⏰ 시간대별 활동:")
+    events_df.groupBy("hour") \
+        .count() \
+        .orderBy(desc("count")) \
+        .show(5, truncate=False)
 
-def create_ml_features(events_df):
-    """머신러닝용 피처 생성"""
+# 모든 분석을 한번에 실행
+def run_complete_analysis(events_df):
+    """전체 분석 실행"""
     
-    from pyspark.ml.feature import StringIndexer, VectorAssembler, StandardScaler
+    print("🚀 전체 분석 시작...")
     
-    # 범주형 변수 인덱싱
-    indexers = []
-    categorical_cols = ["event_type", "category", "device_type"]
+    # 1. 빠른 인사이트
+    quick_insights(events_df)
     
-    for col_name in categorical_cols:
-        if col_name in events_df.columns:
-            indexer = StringIndexer(
-                inputCol=col_name, 
-                outputCol=f"{col_name}_indexed"
-            )
-            indexers.append(indexer)
+    # 2. 비즈니스 분석
+    business_results = business_summary_analysis(events_df)
+    print(f"\n📋 카테고리별 성과:")
+    business_results['summary'].show(10, truncate=False)
     
-    # 피처 벡터화
-    feature_cols = [f"{col}_indexed" for col in categorical_cols if col in events_df.columns]
-    feature_cols.extend(["value", "hour", "day_of_week"])
+    # 3. 이상치 탐지
+    anomalies = anomaly_detection(events_df)
+    anomaly_count = anomalies.filter(col("is_anomaly")).count()
+    print(f"\n⚠️  탐지된 이상치: {anomaly_count}개")
     
-    assembler = VectorAssembler(
-        inputCols=feature_cols,
-        outputCol="features_raw"
-    )
+    # 4. 전환 퍼널
+    calculate_conversion_funnel(events_df)
     
-    # 정규화
-    scaler = StandardScaler(
-        inputCol="features_raw",
-        outputCol="features"
-    )
+    # 5. 이벤트 시퀀스
+    print(f"\n🔗 주요 이벤트 전환 패턴:")
+    event_sequence_analysis(events_df).show(10, truncate=False)
     
-    return indexers, assembler, scaler
+    return {
+        'business_analysis': business_results,
+        'anomalies': anomalies,
+        'user_behavior': user_behavior_analysis(events_df)
+    }
 
 if __name__ == "__main__":
-    print("✅ 고급 DataFrame 연산 함수들이 로드되었습니다.")
-    print("   - complex_business_analysis(): 복합 비즈니스 분석")
-    print("   - create_cohort_analysis(): 코호트 분석")
-    print("   - calculate_moving_averages(): 이동평균 계산")
-    print("   - detect_anomalies(): 이상치 탐지")
-    print("   - create_feature_engineering(): 피처 엔지니어링")
-    print("   - optimize_dataframe_operations(): 성능 최적화")
-    print("   - create_summary_statistics(): 요약 통계")
-    print("   - memory_efficient_processing(): 메모리 효율적 처리")
-    print("   - create_ml_features(): ML 피처 생성")
+    print("✅ 현재 데이터 구조에 맞는 고급 분석 함수들이 로드되었습니다.")
+    print("   - business_summary_analysis(): 비즈니스 요약")
+    print("   - user_behavior_analysis(): 사용자 행동 분석")
+    print("   - time_series_analysis(): 시계열 분석")
+    print("   - anomaly_detection(): 이상치 탐지")
+    print("   - calculate_conversion_funnel(): 전환 퍼널")
+    print("   - quick_insights(): 빠른 인사이트")
+    print("   - run_complete_analysis(): 전체 분석 실행")
